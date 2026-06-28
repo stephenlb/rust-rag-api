@@ -1142,6 +1142,7 @@ dependencies = [
  "anyhow",
  "axum",
  "rusqlite",
+ "serde_json",
  "tokio",
  "turbovec",
 ]
