@@ -1,3 +1,6 @@
+mod database;
+use database::{Database};
+
 use tokio;
 use tokio::sync::Mutex;
 use rusqlite::{self, Connection};
@@ -18,7 +21,7 @@ use axum::{
 
 #[derive(Debug)] 
 struct RAGState {
-    sqlite: Mutex<Connection>,
+    database: Database,
     // turbovec
     // sqlite
     // embedding
@@ -34,7 +37,6 @@ async fn main() -> Result<()> {
     // TODO tomorrow Monday
     // TODO sqlite handler module
     // TODO Schema
-
     // TODO Tuesday
     // TODO embedding impl mod  -> @bonzupii ***Nomic:250m***, Arctic, Granite:30m embedding models
     // TODO turbovec handler
@@ -42,9 +44,10 @@ async fn main() -> Result<()> {
     // TODO ✅ sqlite in state
     // TODO ✅ add tests
     // TODO ✅ web server routes
-    let db = Connection::open_in_memory()?;
+    //let db = Connection::open_in_memory()?;
+    let db = Database::new();
     let state = Arc::new(RAGState {
-        sqlite: db.into(),
+        database: db,//;;.into(),
     });
     let app: Router = Router::new()
 
@@ -57,7 +60,6 @@ async fn main() -> Result<()> {
         //.layer(Extension(state))
         .with_state(state)
         .layer(middleware::from_fn(force_json_content_type));
-
 
     let host = "0.0.0.0:3000";
     let listener = tokio::net::TcpListener::bind(host).await.unwrap();
@@ -83,7 +85,6 @@ async fn doc(
 ) -> Json<Value> {
     Json(json!({"text":"Doc loaded successfully!"}))
 }
-
 
 async fn force_json_content_type(mut req: Request<Body>, next: Next) -> Response {
     req.headers_mut().insert(
