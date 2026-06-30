@@ -55,6 +55,7 @@ async fn main() -> Result<()> {
         .route("/", post(root))
 
         // Upload documents
+        // TODO chunck the data
         .route("/doc", post(doc))
 
         //.layer(Extension(state))
@@ -74,15 +75,28 @@ async fn root(
     Json(body): Json<Value>,
 ) -> Json<Value> {
     let prompt: &str = body["prompt"].as_str().unwrap_or("");
-    println!("posted data");
-    println!("User prompt: {}", prompt);
+    //println!("posted data");
+    //println!("User prompt: {}", prompt);
+    let docs = state.database.search(prompt, 5).await;
+    dbg!(docs);
+    //dbg!(s);
+    /*
+    let _ = match state.database.search(prompt, 5).await {
+        Ok(rows) => rows,
+        Err(err) => dbg!(err),
+    };
+    */
 
+    // Response
     Json(json!({"text":"Hello!!!!"}))
 }
 async fn doc(
     State(state): State<Arc<RAGState>>,
     Json(body): Json<Value>,
 ) -> Json<Value> {
+    let document: &str = body["document"].as_str().unwrap_or("");
+    let _ = state.database.insert(document).await;
+    //dbg!(s);
     Json(json!({"text":"Doc loaded successfully!"}))
 }
 

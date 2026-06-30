@@ -1,20 +1,27 @@
-use rusqlite::{self, Connection};
+// TODO Tokio RUSQLITE!!!!<__ 
+// TODO add Turbovec here
+// TODO return Result<()> insert function
+// TODO CHUNKING!!!!!
+use rusqlite::{self, params, Connection};
 use tokio::sync::Mutex;
 use anyhow::Result;
 
 const SCHEMA: &str = "
-    -- CREATE TABLE IF NOT EXISTS slice (
-    --     id INT PRIMARY KEY,
-    --     created DATETIME,
-    --     segment TEXT
-    -- );
-    CREATE VIRTUAL TABLE IF NOT EXISTS slice USING fts5 (
+    CREATE VIRTUAL TABLE IF NOT EXISTS slices USING fts5 (
         text,
     );
 ";
 const INSERT: &str = "
-    INSERT INTO slice (text)
-    VALUES (?1)
+    INSERT INTO slices (text)
+    VALUES (?1);
+";
+const SELECT: &str = "
+    SELECT text -- , bm25(text) AS score
+    FROM slices
+    LIMIT 10;
+    -- WHERE text MATCH '?1'
+    -- ORDER BY score
+    -- LIMIT ?2;
 ";
 
 #[derive(Debug)] 
@@ -22,17 +29,51 @@ pub struct Database {
     connection: Mutex<Connection>,
 }
 
+#[derive(Debug)] 
+pub struct Document {
+    text: String,
+}
+
 impl Database {
-   pub fn new() -> Self {
+    pub fn new() -> Self {
         let db = Connection::open_in_memory().expect("database connection");
         let _ = db.execute(SCHEMA, ());
 
         Self {
             connection: db.into(),
         }
-   }
-   pub async fn insert(&self, text: &str) {
+    }
+
+    pub async fn insert(&self, text: &str) -> Result<usize> {
         let guard = self.connection.lock().await;
-        let _ = guard.execute(INSERT, (text,));
-   }
+        let result = guard.execute(INSERT, (text,))?;
+
+        Ok(result)
+    }
+
+    pub async fn search(&self, search: &str, limit: i32) -> Result<String> {
+        let guard = self.connection.lock().await;
+        let mut statment = guard.prepare(SELECT)?;
+        //let documents = statment.query_map(params![search, limit], |row|
+        let documents = statment.query_map([], |row|
+            Ok(Document {
+                text : row.get(0)?,
+            })
+        )?;
+
+        //let collected = documents.collect();
+
+        /*
+        let docs: Vec<String> = documents
+            .map(|d| d.unwrap())
+            .collect();
+            */
+        let mut docs: Vec<String> = vec![];
+        for doc in documents {
+            docs.push(doc?.text);
+            //println!("{:?}", doc.unwrap());
+        }
+
+        Ok(docs.join("\n"))
+    }
 }

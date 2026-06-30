@@ -7,4 +7,4 @@ curl $HOST/ -d '{"prompt":"'$PROMPT'"}'
 
 ## Test Document loading
 DOCUMENT="day is going well thank you"
-curl $HOST/doc -d '{"":"'$DOCUMENT'"}'
+curl $HOST/doc -d '{"document":"'$DOCUMENT'"}'
