@@ -1,27 +1,26 @@
+// TODO Deduplication  
+// TODO CHUNKING!!!!!
 // TODO Tokio RUSQLITE!!!!<__ 
 // TODO add Turbovec here
-// TODO return Result<()> insert function
-// TODO CHUNKING!!!!!
+// TODO ✅ return Result<()> insert function
 use rusqlite::{self, params, Connection};
 use tokio::sync::Mutex;
 use anyhow::Result;
 
 const SCHEMA: &str = "
-    CREATE VIRTUAL TABLE IF NOT EXISTS slices USING fts5 (
+    CREATE VIRTUAL TABLE IF NOT EXISTS documents USING fts5 (
         text,
     );
 ";
 const INSERT: &str = "
-    INSERT INTO slices (text)
+    INSERT INTO documents (text)
     VALUES (?1);
 ";
 const SELECT: &str = "
-    SELECT text -- , bm25(text) AS score
-    FROM slices
-    LIMIT 10;
-    -- WHERE text MATCH '?1'
-    -- ORDER BY score
-    -- LIMIT ?2;
+    SELECT text, bm25(documents) AS rank
+    FROM documents
+    WHERE text MATCH ?1
+    LIMIT ?2;
 ";
 
 #[derive(Debug)] 
@@ -32,6 +31,7 @@ pub struct Database {
 #[derive(Debug)] 
 pub struct Document {
     text: String,
+    rank: f64,
 }
 
 impl Database {
@@ -54,20 +54,13 @@ impl Database {
     pub async fn search(&self, search: &str, limit: i32) -> Result<String> {
         let guard = self.connection.lock().await;
         let mut statment = guard.prepare(SELECT)?;
-        //let documents = statment.query_map(params![search, limit], |row|
-        let documents = statment.query_map([], |row|
-            Ok(Document {
-                text : row.get(0)?,
-            })
-        )?;
+        let documents = statment.query_map(params![search, limit], |row| {
+            let text: String = row.get(0)?;
+            let rank: f64 = row.get(1)?;
+            dbg!(rank);
+            Ok(Document { text, rank })
+        })?;
 
-        //let collected = documents.collect();
-
-        /*
-        let docs: Vec<String> = documents
-            .map(|d| d.unwrap())
-            .collect();
-            */
         let mut docs: Vec<String> = vec![];
         for doc in documents {
             docs.push(doc?.text);

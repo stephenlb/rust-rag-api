@@ -2,8 +2,6 @@ mod database;
 use database::{Database};
 
 use tokio;
-use tokio::sync::Mutex;
-use rusqlite::{self, Connection};
 use anyhow::Result;
 use std::sync::Arc;
 use serde_json::{Value, json};
@@ -44,10 +42,9 @@ async fn main() -> Result<()> {
     // TODO ✅ sqlite in state
     // TODO ✅ add tests
     // TODO ✅ web server routes
-    //let db = Connection::open_in_memory()?;
     let db = Database::new();
     let state = Arc::new(RAGState {
-        database: db,//;;.into(),
+        database: db,
     });
     let app: Router = Router::new()
 
@@ -77,7 +74,7 @@ async fn root(
     let prompt: &str = body["prompt"].as_str().unwrap_or("");
     //println!("posted data");
     //println!("User prompt: {}", prompt);
-    let docs = state.database.search(prompt, 5).await;
+    let docs = state.database.search(prompt, 2).await;
     dbg!(docs);
     //dbg!(s);
     /*
