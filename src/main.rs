@@ -1,3 +1,4 @@
+mod hash;
 mod database;
 use database::{Database};
 
@@ -75,7 +76,7 @@ async fn root(
     //println!("posted data");
     //println!("User prompt: {}", prompt);
     let docs = state.database.search(prompt, 2).await;
-    dbg!(docs);
+    let _ = dbg!(docs);
     //dbg!(s);
     /*
     let _ = match state.database.search(prompt, 5).await {

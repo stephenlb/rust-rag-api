@@ -1,17 +1,32 @@
+// TODO Hashing function - prevent duplication
+// TODO Docker
+// TODO build our own hash function "string" -> "s" -> 121 >> 5441
 // TODO Deduplication  
 // TODO CHUNKING!!!!!
 // TODO Tokio RUSQLITE!!!!<__ 
 // TODO add Turbovec here
 // TODO ✅ return Result<()> insert function
+use crate::hash;
 use rusqlite::{self, params, Connection};
 use tokio::sync::Mutex;
 use anyhow::Result;
 
-const SCHEMA: &str = "
-    CREATE VIRTUAL TABLE IF NOT EXISTS documents USING fts5 (
-        text,
+const DOCUMENT_DEDUPLICATION: &str = "
+    CREATE TABLE IF NO EXISTS document_deduplication (
+        hash AS VARCHAR(64)
     );
 ";
+///TODO
+const DOCUMENT_DEDUPLICATION_INDEX: &str = "
+     ///TODO
+";
+
+const DOCUMENT: &str = "
+    CREATE VIRTUAL TABLE IF NOT EXISTS documents USING fts5 (
+        text
+    );
+";
+
 const INSERT: &str = "
     INSERT INTO documents (text)
     VALUES (?1);
@@ -22,7 +37,6 @@ const SELECT: &str = "
     WHERE text MATCH ?1
     LIMIT ?2;
 ";
-
 #[derive(Debug)] 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -37,7 +51,8 @@ pub struct Document {
 impl Database {
     pub fn new() -> Self {
         let db = Connection::open_in_memory().expect("database connection");
-        let _ = db.execute(SCHEMA, ());
+        let _ = db.execute(DOCUMENT, ());
+        let _ = db.execute(DOCUMENT_DEDUPLICATION, ());
 
         Self {
             connection: db.into(),
@@ -57,7 +72,7 @@ impl Database {
         let documents = statment.query_map(params![search, limit], |row| {
             let text: String = row.get(0)?;
             let rank: f64 = row.get(1)?;
-            dbg!(rank);
+            let _ = dbg!(rank);
             Ok(Document { text, rank })
         })?;
 
