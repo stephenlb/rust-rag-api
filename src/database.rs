@@ -6,19 +6,15 @@
 // TODO Tokio RUSQLITE!!!!<__ 
 // TODO add Turbovec here
 // TODO ✅ return Result<()> insert function
-use crate::hash;
-use rusqlite::{self, params, Connection};
+use crate::hash::*;
+use rusqlite::{self, params, Connection, OptionalExtension};
 use tokio::sync::Mutex;
 use anyhow::Result;
 
 const DOCUMENT_DEDUPLICATION: &str = "
-    CREATE TABLE IF NO EXISTS document_deduplication (
-        hash AS VARCHAR(64)
+    CREATE TABLE IF NOT EXISTS document_deduplication (
+        hash INT
     );
-";
-///TODO
-const DOCUMENT_DEDUPLICATION_INDEX: &str = "
-     ///TODO
 ";
 
 const DOCUMENT: &str = "
@@ -31,12 +27,17 @@ const INSERT: &str = "
     INSERT INTO documents (text)
     VALUES (?1);
 ";
+const INSERT_DUPE: &str = "
+    INSERT INTO document_deduplication (text)
+    VALUES (?1);
+";
 const SELECT: &str = "
     SELECT text, bm25(documents) AS rank
     FROM documents
     WHERE text MATCH ?1
     LIMIT ?2;
 ";
+
 #[derive(Debug)] 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -59,9 +60,31 @@ impl Database {
         }
     }
 
+    async fn check_duplicate(&self, text: &str) -> Result<bool> {
+        let guard = self.connection.lock().await;
+        let text_hash: i64 = hash(text);
+	let duplicate: Option<String> = guard.query_row(
+            "SELECT hash FROM document_deduplication WHERE hash = ?1 LIMIT 1;",
+            params![text_hash],
+            |row| row.get(0),
+        ).optional()?;
+
+        Ok(duplicate.is_some())
+    }
+
     pub async fn insert(&self, text: &str) -> Result<usize> {
+        let dupe: bool = self.check_duplicate(text).await.unwrap();
+
+        // Prevents inserting duplicate documents
+        if dupe {
+            println!("Duplicate detected, preventing insert");
+            return Ok(0);
+        };
+        
         let guard = self.connection.lock().await;
         let result = guard.execute(INSERT, (text,))?;
+        let text_hash: i64 = hash(text);
+        let result = guard.execute(INSERT_DUPE, params![text_hash])?;
 
         Ok(result)
     }
@@ -79,7 +102,6 @@ impl Database {
         let mut docs: Vec<String> = vec![];
         for doc in documents {
             docs.push(doc?.text);
-            //println!("{:?}", doc.unwrap());
         }
 
         Ok(docs.join("\n"))

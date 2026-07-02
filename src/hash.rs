@@ -1,14 +1,14 @@
-const START: u64 = 5431;
-const MULT: u64 = 847209285431;
-const SHIFT: u64 = 5;
+const START: i64 = 5431;
+const MULT:  i64 = 847209285431;
+const SHIFT: i64 = 5;
 
-pub fn hash(text: &str) -> u64 {
-    let mut hash: u64 = START;
+pub fn hash(text: &str) -> i64 {
+    let mut hash: i64 = START;
     for byte in text.bytes() {
         hash = (hash << SHIFT)
             .wrapping_add(hash)
             .wrapping_mul(MULT)
-            .wrapping_add(byte as u64);
+            .wrapping_add(byte as i64);
     }
     hash = hash
         .wrapping_add(hash)
@@ -31,18 +31,25 @@ mod test {
 
         let herro = hash("herro");
         dbg!(herro);
+
+        assert!(hello != hellp);
+        assert!(hello != herro);
+        assert!(herro != hellp);
+        assert!(hello < hellp);
     }
 
     #[test]
     fn test_smoke() {
         let test_use_hash = "let out smoke test";
         let out = hash(test_use_hash);
-        println!("{out}");
+        dbg!(out);
     }
 
     #[test]
     fn test_u8_wrapping() {
         let number: u8 = 255;
         let number: u8 = number.wrapping_add(1);
+
+        assert!(number == 0);
     }
 }
