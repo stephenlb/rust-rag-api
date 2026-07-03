@@ -1,34 +1,33 @@
-// TODO Hashing function - prevent duplication
 // TODO Docker
-// TODO build our own hash function "string" -> "s" -> 121 >> 5441
-// TODO Deduplication  
-// TODO CHUNKING!!!!!
-// TODO Tokio RUSQLITE!!!!<__ 
 // TODO add Turbovec here
+// TODO ✅ CHUNKING!!!!!
+// TODO ✅ build our own hash function "string" -> "s" -> 121 >> 5441
+// TODO ✅ Hashing function - prevent duplication
+// TODO ✅ Deduplication  
 // TODO ✅ return Result<()> insert function
+// TODO Tokio RUSQLITE!!!!<__ 
 use crate::hash::*;
 use rusqlite::{self, params, Connection, OptionalExtension};
 use tokio::sync::Mutex;
 use anyhow::Result;
 
+const NUMBER_OF_WORDS_PER_CHUNK: usize = 200;
 const DOCUMENT_DEDUPLICATION: &str = "
     CREATE TABLE IF NOT EXISTS document_deduplication (
         hash INT
     );
 ";
-
 const DOCUMENT: &str = "
     CREATE VIRTUAL TABLE IF NOT EXISTS documents USING fts5 (
         text
     );
 ";
-
 const INSERT: &str = "
     INSERT INTO documents (text)
     VALUES (?1);
 ";
 const INSERT_DUPE: &str = "
-    INSERT INTO document_deduplication (text)
+    INSERT INTO document_deduplication (hash)
     VALUES (?1);
 ";
 const SELECT: &str = "
@@ -72,14 +71,43 @@ impl Database {
         Ok(duplicate.is_some())
     }
 
-    pub async fn insert(&self, text: &str) -> Result<usize> {
-        let dupe: bool = self.check_duplicate(text).await.unwrap();
+    fn chunk(&self, text: &str) -> Vec<String> {
+        let mut chunks: Vec<String> = vec![];
+        let mut current_word: usize = 0;
+        let words: Vec<String> = text
+            .split_whitespace()
+            .map(|w| w.to_string())
+            .collect();
+        let number_of_words: usize = words.len();
+        let number_of_chunks: usize = number_of_words / NUMBER_OF_WORDS_PER_CHUNK;
 
-        // Prevents inserting duplicate documents
-        if dupe {
-            println!("Duplicate detected, preventing insert");
+        for chunk in 0..number_of_chunks {
+            let sentence: String = words[
+                chunk*NUMBER_OF_WORDS_PER_CHUNK..
+                (chunk+1)*NUMBER_OF_WORDS_PER_CHUNK
+            ].join(" ");
+            chunks.push(sentence);
+        }
+        let sentence: String = words[number_of_chunks*NUMBER_OF_WORDS_PER_CHUNK..number_of_words].join(" ");
+        chunks.push(sentence);
+
+        chunks
+    }
+
+    pub async fn add_document(&self, document: &str) -> Result<usize> {
+        let chunks: Vec<String> = self.chunk(document);
+        for chunck in chunks {
+            self.insert(&chunck).await?;
+        }
+        Ok(0)
+
+    }
+
+    pub async fn insert(&self, text: &str) -> Result<usize> {
+        if self.check_duplicate(text).await.is_err() {
+            println!("DUPLICATE!!!!!!!!!");
             return Ok(0);
-        };
+        }
         
         let guard = self.connection.lock().await;
         let result = guard.execute(INSERT, (text,))?;

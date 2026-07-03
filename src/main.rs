@@ -33,13 +33,11 @@ struct Prompt {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // TODO tomorrow Monday
-    // TODO sqlite handler module
-    // TODO Schema
-    // TODO Tuesday
     // TODO embedding impl mod  -> @bonzupii ***Nomic:250m***, Arctic, Granite:30m embedding models
     // TODO turbovec handler
     // TODO LLM handler
+    // TODO ✅ sqlite handler module
+    // TODO ✅ Schema
     // TODO ✅ sqlite in state
     // TODO ✅ add tests
     // TODO ✅ web server routes
@@ -93,7 +91,7 @@ async fn doc(
     Json(body): Json<Value>,
 ) -> Json<Value> {
     let document: &str = body["document"].as_str().unwrap_or("");
-    let _ = state.database.insert(document).await;
+    let _ = state.database.add_document(document).await;
     //dbg!(s);
     Json(json!({"text":"Doc loaded successfully!"}))
 }

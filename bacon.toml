@@ -9,7 +9,7 @@ base_volume = "100%"
 [jobs.check]
 command = ["cargo", "check", "--color", "always"]
 need_stdout = false
-on_success = "play-sound(name=success,volume=50)"
+on_success = "play-sound(name=success,volume=60)"
 on_failure = "play-sound(name=short-beep-tone,volume=90)"
 
 [jobs.check-all]
