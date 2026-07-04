@@ -18,7 +18,6 @@ use axum::{
     response::Response,
 };
 
-#[derive(Debug)] 
 struct RAGState {
     database: Database,
     // turbovec
@@ -36,6 +35,7 @@ async fn main() -> Result<()> {
     // TODO embedding impl mod  -> @bonzupii ***Nomic:250m***, Arctic, Granite:30m embedding models
     // TODO turbovec handler
     // TODO LLM handler
+    // TODO data docs for testing
     // TODO ✅ sqlite handler module
     // TODO ✅ Schema
     // TODO ✅ sqlite in state

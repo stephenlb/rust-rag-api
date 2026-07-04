@@ -10,6 +10,7 @@ use crate::hash::*;
 use rusqlite::{self, params, Connection, OptionalExtension};
 use tokio::sync::Mutex;
 use anyhow::Result;
+use turbovec::TurboQuantIndex;
 
 const NUMBER_OF_WORDS_PER_CHUNK: usize = 200;
 const DOCUMENT_DEDUPLICATION: &str = "
@@ -37,9 +38,9 @@ const SELECT: &str = "
     LIMIT ?2;
 ";
 
-#[derive(Debug)] 
 pub struct Database {
     connection: Mutex<Connection>,
+    vectors: TurboQuantIndex,
 }
 
 #[derive(Debug)] 
@@ -51,11 +52,13 @@ pub struct Document {
 impl Database {
     pub fn new() -> Self {
         let db = Connection::open_in_memory().expect("database connection");
+        let vs = TurboQuantIndex::new(1536, 4).unwrap();
         let _ = db.execute(DOCUMENT, ());
         let _ = db.execute(DOCUMENT_DEDUPLICATION, ());
 
         Self {
             connection: db.into(),
+            vectors: vs,
         }
     }
 
@@ -108,6 +111,10 @@ impl Database {
             println!("DUPLICATE!!!!!!!!!");
             return Ok(0);
         }
+
+        // TODO Insert into Vector store here
+        //let vectors = Vec<f32> = self.embedding(text);
+        // self.vs.add(&vectors);
         
         let guard = self.connection.lock().await;
         let result = guard.execute(INSERT, (text,))?;
