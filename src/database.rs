@@ -1,5 +1,6 @@
 // TODO Docker
 // TODO add Turbovec here
+// TODO Propmt Stemming - remove filler words from prompt
 // TODO ✅ CHUNKING!!!!!
 // TODO ✅ build our own hash function "string" -> "s" -> 121 >> 5441
 // TODO ✅ Hashing function - prevent duplication
@@ -10,7 +11,10 @@ use crate::hash::*;
 use rusqlite::{self, params, Connection, OptionalExtension};
 use tokio::sync::Mutex;
 use anyhow::Result;
+
+// Vector Strore and Embedding
 use turbovec::TurboQuantIndex;
+use fastembed::{TextEmbedding, TextInitOptions, EmbeddingModel};
 
 const NUMBER_OF_WORDS_PER_CHUNK: usize = 200;
 const DOCUMENT_DEDUPLICATION: &str = "
@@ -40,7 +44,8 @@ const SELECT: &str = "
 
 pub struct Database {
     connection: Mutex<Connection>,
-    vectors: TurboQuantIndex,
+    vector_store: Mutex<TurboQuantIndex>,
+    embedding: Mutex<TextEmbedding>,
 }
 
 #[derive(Debug)] 
@@ -52,13 +57,15 @@ pub struct Document {
 impl Database {
     pub fn new() -> Self {
         let db = Connection::open_in_memory().expect("database connection");
-        let vs = TurboQuantIndex::new(1536, 4).unwrap();
+        let vector_store = TurboQuantIndex::new(384, 4).unwrap();
+        let embedding = TextEmbedding::try_new(Default::default()).unwrap();
         let _ = db.execute(DOCUMENT, ());
         let _ = db.execute(DOCUMENT_DEDUPLICATION, ());
 
         Self {
             connection: db.into(),
-            vectors: vs,
+            vector_store: vector_store.into(),
+            embedding: embedding.into(),
         }
     }
 
@@ -103,7 +110,6 @@ impl Database {
             self.insert(&chunck).await?;
         }
         Ok(0)
-
     }
 
     pub async fn insert(&self, text: &str) -> Result<usize> {
@@ -112,9 +118,15 @@ impl Database {
             return Ok(0);
         }
 
-        // TODO Insert into Vector store here
-        //let vectors = Vec<f32> = self.embedding(text);
-        // self.vs.add(&vectors);
+        let input: Vec<&str> = vec![text];
+        let mut embedding_guard = self.embedding.lock().await;
+        let mut vector_guard = self.vector_store.lock().await;
+        let vectors = embedding_guard.embed(input, None).unwrap();
+
+        for vector in vectors {
+            dbg!(vector.len());
+            vector_guard.add(&vector);
+        }
         
         let guard = self.connection.lock().await;
         let result = guard.execute(INSERT, (text,))?;
