@@ -22,10 +22,10 @@ const DOCUMENT_DEDUPLICATION: &str = "
         hash INT
     );
 ";
+
 const DOCUMENT: &str = "
-    CREATE VIRTUAL TABLE IF NOT EXISTS documents USING fts5 (
-        text
-    );
+    CREATE VIRTUAL TABLE IF NOT EXISTS documents
+    USING fts5 (text);
 ";
 const INSERT: &str = "
     INSERT INTO documents (text)
@@ -36,7 +36,7 @@ const INSERT_DUPE: &str = "
     VALUES (?1);
 ";
 const SELECT: &str = "
-    SELECT text, bm25(documents) AS rank
+    SELECT rowid, text, bm25(documents) AS rank
     FROM documents
     WHERE text MATCH ?1
     LIMIT ?2;
@@ -50,6 +50,7 @@ pub struct Database {
 
 #[derive(Debug)] 
 pub struct Document {
+    rowid: i64,
     text: String,
     rank: f64,
 }
@@ -121,14 +122,13 @@ impl Database {
         let input: Vec<&str> = vec![text];
         let mut embedding_guard = self.embedding.lock().await;
         let mut vector_guard = self.vector_store.lock().await;
+        let guard = self.connection.lock().await;
         let vectors = embedding_guard.embed(input, None).unwrap();
 
-        for vector in vectors {
-            dbg!(vector.len());
-            vector_guard.add(&vector);
-        }
+        // Save to vector store
+        vector_guard.add(&vectors[0]);
         
-        let guard = self.connection.lock().await;
+        // Save to Database
         let result = guard.execute(INSERT, (text,))?;
         let text_hash: i64 = hash(text);
         let result = guard.execute(INSERT_DUPE, params![text_hash])?;
@@ -138,17 +138,31 @@ impl Database {
 
     pub async fn search(&self, search: &str, limit: i32) -> Result<String> {
         let guard = self.connection.lock().await;
+        let vector_guard = self.vector_store.lock().await;
+        let mut embedding_guard = self.embedding.lock().await;
         let mut statment = guard.prepare(SELECT)?;
         let documents = statment.query_map(params![search, limit], |row| {
-            let text: String = row.get(0)?;
-            let rank: f64 = row.get(1)?;
+            let rowid: i64 = row.get(0)?;
+            let text: String = row.get(1)?;
+            let rank: f64 = row.get(2)?;
             let _ = dbg!(rank);
-            Ok(Document { text, rank })
+            Ok(Document { rowid, text, rank })
         })?;
+
+        // Vector Sreach
+        let input: Vec<&str> = vec![search];
+        let vectors = embedding_guard.embed(input, None).unwrap();
+        let results = vector_guard.search(&vectors[0], 10);
+        //TODO get indexes
+        println!("Scores: {:?}", results.scores);
+        println!("Indices: {:?}", results.indices);
 
         let mut docs: Vec<String> = vec![];
         for doc in documents {
-            docs.push(doc?.text);
+            // TODO fetch doc
+            let doc = doc?;
+            dbg!(doc.rowid);
+            docs.push(doc.text);
         }
 
         Ok(docs.join("\n"))
