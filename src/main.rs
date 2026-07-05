@@ -34,7 +34,7 @@ struct Prompt {
 #[tokio::main]
 async fn main() -> Result<()> {
     // TODO embedding impl mod  -> @bonzupii ***Nomic:250m***, Arctic, Granite:30m embedding models
-    // TODO turbovec handler
+    // TODO ✅ turbovec handler
     // TODO LLM handler
     // TODO data docs for testing
     // TODO ✅ sqlite handler module

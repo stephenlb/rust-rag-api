@@ -2,7 +2,7 @@ use stop_words;
 use rust_stemmers::{Algorithm, Stemmer};
 use std::collections::HashSet;
 
-struct Cleaner {
+pub struct Cleaner {
     stemmer: Stemmer,
     stop_words: HashSet<String>,
 }

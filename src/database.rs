@@ -9,6 +9,7 @@
 // TODO ✅ return Result<()> insert function
 // TODO Tokio RUSQLITE!!!!<__ 
 use crate::hash::*;
+use crate::clean::Cleaner;
 use rusqlite::{self, params, Connection, OptionalExtension};
 use tokio::sync::Mutex;
 use anyhow::Result;
@@ -48,6 +49,7 @@ pub struct Database {
     connection: Mutex<Connection>,
     vector_store: Mutex<TurboQuantIndex>,
     embedding: Mutex<TextEmbedding>,
+    cleaner: Cleaner,
 }
 
 #[derive(Debug)] 
@@ -77,6 +79,8 @@ impl Database {
         let db = Connection::open_in_memory().expect("database connection");
         let vector_store = TurboQuantIndex::new(384, 4).unwrap();
         let embedding = TextEmbedding::try_new(Default::default()).unwrap();
+        let cleaner = Cleaner::new();
+
         let _ = db.execute(DOCUMENT, ());
         let _ = db.execute(DOCUMENT_DEDUPLICATION, ());
 
@@ -84,6 +88,7 @@ impl Database {
             connection: db.into(),
             vector_store: vector_store.into(),
             embedding: embedding.into(),
+            cleaner: cleaner,
         }
     }
 
@@ -125,7 +130,8 @@ impl Database {
     pub async fn add_document(&self, document: &str) -> Result<usize> {
         let chunks: Vec<String> = self.chunk(document);
         for chunck in chunks {
-            self.insert(&chunck).await?;
+            let cleaned: String = self.cleaner.clean(&chunck);
+            self.insert(&cleaned).await?;
         }
         Ok(0)
     }
@@ -155,7 +161,8 @@ impl Database {
 
     pub async fn search(&self, search: &str, limit: i32) -> Result<String> {
         // Vector Sreach
-        let input: Vec<&str> = vec![search];
+        let cleaned: String = self.cleaner.clean(&search);
+        let input: Vec<&str> = vec![&cleaned];
         let mut embedding_guard = self.embedding.lock().await;
         let vector_guard = self.vector_store.lock().await;
         let vectors = embedding_guard.embed(input, None).unwrap();
@@ -168,7 +175,7 @@ impl Database {
         let select = format!(SELECT!(), rowids);
         let guard = self.connection.lock().await;
         let mut statment = guard.prepare(&select)?;
-        let documents = statment.query_map(params![search, limit], |row| {
+        let documents = statment.query_map(params![cleaned, limit], |row| {
             let rowid: i64 = row.get(0)?;
             let text: String = row.get(1)?;
             let rank: f64 = row.get(2)?;

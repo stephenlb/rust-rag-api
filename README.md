@@ -3,9 +3,10 @@
 ## TODOs
 
  - Docker container ( Podman )
- - Vector Embedding ( ??? Word2Vec )
- - Vector store to disk ( TurboVec )
- - UI Iced (or other)
  - LLM to answer the user's prompt
+ - ratatui - Rust TUI 
+ - ✅ Vector Embedding ( ??? Word2Vec )
+ - ✅ Vector store to disk ( TurboVec )
+ - UI Iced (or other)
  - ✅ Webserver routing (Axum) Controller
  - ✅ SQLite DB Schema
