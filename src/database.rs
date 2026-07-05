@@ -56,6 +56,21 @@ pub struct Document {
     rank: f64,
 }
 
+trait JoinVeci64 {
+    fn join(&self, delimiter: &str) -> String;
+}
+
+impl JoinVeci64 for Vec<i64> {
+    fn join(&self, delimiter: &str) -> String {
+        let strings: Vec<String> = self
+            .iter()
+            .map(|n| n.to_string())
+            .collect();
+
+        strings.join(delimiter)
+    }
+}
+
 impl Database {
     pub fn new() -> Self {
         let db = Connection::open_in_memory().expect("database connection");
@@ -144,16 +159,12 @@ impl Database {
         let vector_guard = self.vector_store.lock().await;
         let vectors = embedding_guard.embed(input, None).unwrap();
         let results = vector_guard.search(&vectors[0], 10);
-        //TODO get indexes
+
         println!("Scores: {:?}", results.scores);
         println!("Indices: {:?}", results.indices);
-        let rowids: Vec<String> = results.indices
-            .iter()
-            .map(|n|n.to_string())
-            .collect();
-        let rowids = rowids.join(",");
+        let rowids = results.indices.join(",");
 
-        let select = format!(SELECT!(), "1");
+        let select = format!(SELECT!(), rowids);
         let guard = self.connection.lock().await;
         let mut statment = guard.prepare(&select)?;
         let documents = statment.query_map(params![search, limit], |row| {
