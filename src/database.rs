@@ -1,5 +1,5 @@
 // TODO Docker
-// TODO add Turbovec here
+// TODO ✅ add Turbovec here
 // TODO Propmt Stemming - remove filler words from prompt
 // TODO ✅ CHUNKING!!!!!
 // TODO ✅ build our own hash function "string" -> "s" -> 121 >> 5441
@@ -35,12 +35,13 @@ const INSERT_DUPE: &str = "
     INSERT INTO document_deduplication (hash)
     VALUES (?1);
 ";
-const SELECT: &str = "
-    SELECT rowid, text, bm25(documents) AS rank
+macro_rules! SELECT { () => {"
+    select rowid, text, bm25(documents) AS rank
     FROM documents
     WHERE text MATCH ?1
+    OR rowid in ({})
     LIMIT ?2;
-";
+"}; }
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -137,10 +138,24 @@ impl Database {
     }
 
     pub async fn search(&self, search: &str, limit: i32) -> Result<String> {
-        let guard = self.connection.lock().await;
-        let vector_guard = self.vector_store.lock().await;
+        // Vector Sreach
+        let input: Vec<&str> = vec![search];
         let mut embedding_guard = self.embedding.lock().await;
-        let mut statment = guard.prepare(SELECT)?;
+        let vector_guard = self.vector_store.lock().await;
+        let vectors = embedding_guard.embed(input, None).unwrap();
+        let results = vector_guard.search(&vectors[0], 10);
+        //TODO get indexes
+        println!("Scores: {:?}", results.scores);
+        println!("Indices: {:?}", results.indices);
+        let rowids: Vec<String> = results.indices
+            .iter()
+            .map(|n|n.to_string())
+            .collect();
+        let rowids = rowids.join(",");
+
+        let select = format!(SELECT!(), "1");
+        let guard = self.connection.lock().await;
+        let mut statment = guard.prepare(&select)?;
         let documents = statment.query_map(params![search, limit], |row| {
             let rowid: i64 = row.get(0)?;
             let text: String = row.get(1)?;
@@ -149,13 +164,6 @@ impl Database {
             Ok(Document { rowid, text, rank })
         })?;
 
-        // Vector Sreach
-        let input: Vec<&str> = vec![search];
-        let vectors = embedding_guard.embed(input, None).unwrap();
-        let results = vector_guard.search(&vectors[0], 10);
-        //TODO get indexes
-        println!("Scores: {:?}", results.scores);
-        println!("Indices: {:?}", results.indices);
 
         let mut docs: Vec<String> = vec![];
         for doc in documents {
