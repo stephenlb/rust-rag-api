@@ -2437,7 +2437,9 @@ dependencies = [
  "axum",
  "fastembed",
  "rusqlite",
+ "rust-stemmers",
  "serde_json",
+ "stop-words",
  "tokio",
  "turbovec",
 ]
@@ -2739,6 +2741,16 @@ dependencies = [
  "libsqlite3-sys",
  "smallvec",
  "sqlite-wasm-rs",
+]
+
+[[package]]
+name = "rust-stemmers"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e46a2036019fdb888131db7a4c847a1063a7493f971ed94ea82c67eada63ca54"
+dependencies = [
+ "serde",
+ "serde_derive",
 ]
 
 [[package]]
@@ -3060,6 +3072,15 @@ dependencies = [
  "nalgebra",
  "num-traits",
  "rand 0.8.6",
+]
+
+[[package]]
+name = "stop-words"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d68df56303396bcfb639455b3c166804aeb7994005010aab5e9e8a1277b8871d"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]

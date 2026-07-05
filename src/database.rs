@@ -1,4 +1,5 @@
 // TODO Docker
+// TODO ratatui - UI FOR TERMINAL!!!! @foodude42
 // TODO ✅ add Turbovec here
 // TODO Propmt Stemming - remove filler words from prompt
 // TODO ✅ CHUNKING!!!!!

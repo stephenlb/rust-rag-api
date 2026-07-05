@@ -1,3 +1,4 @@
+mod clean;
 mod hash;
 mod database;
 use database::{Database};
