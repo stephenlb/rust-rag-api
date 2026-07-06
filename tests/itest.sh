@@ -12,5 +12,5 @@ curl $HOST/doc -d '{"document":"'$DOCUMENT'"}'
 DOCUMENT="I really like it when people say good thing about Rust."
 curl $HOST/doc -d '{"document":"'$DOCUMENT'"}'
 
-PROMPT="Rust language"
+PROMPT="Rust"
 curl $HOST/ -d '{"prompt":"'$PROMPT'"}'

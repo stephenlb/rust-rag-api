@@ -18,6 +18,10 @@ use anyhow::Result;
 use turbovec::TurboQuantIndex;
 use fastembed::{TextEmbedding, TextInitOptions, EmbeddingModel};
 
+
+// Vector Score Thresholder
+const SCORE_THRESHOLD: f32 = 0.60;
+
 const NUMBER_OF_WORDS_PER_CHUNK: usize = 200;
 const DOCUMENT_DEDUPLICATION: &str = "
     CREATE TABLE IF NOT EXISTS document_deduplication (
@@ -38,7 +42,7 @@ const INSERT_DUPE: &str = "
     VALUES (?1);
 ";
 macro_rules! SELECT { () => {"
-    select rowid, text, bm25(documents) AS rank
+    SELECT rowid, text, BM25(documents) AS rank
     FROM documents
     WHERE text MATCH ?1
     OR rowid in ({})
@@ -170,9 +174,15 @@ impl Database {
 
         println!("Scores: {:?}", results.scores);
         println!("Indices: {:?}", results.indices);
-        let rowids = results.indices.join(",");
+        // loop over scores, and if score is above 0.60 then keep it
+        let rowids: Vec<i64> = results.indices
+            .iter()
+            .enumerate()
+            .filter(|(index, id)| results.scores[*index] > SCORE_THRESHOLD)
+            .map(|(index, id)| *id)
+            .collect();
 
-        let select = format!(SELECT!(), rowids);
+        let select = format!(SELECT!(), rowids.join(","));
         let guard = self.connection.lock().await;
         let mut statment = guard.prepare(&select)?;
         let documents = statment.query_map(params![cleaned, limit], |row| {
@@ -182,7 +192,6 @@ impl Database {
             let _ = dbg!(rank);
             Ok(Document { rowid, text, rank })
         })?;
-
 
         let mut docs: Vec<String> = vec![];
         for doc in documents {

@@ -21,9 +21,6 @@ use axum::{
 
 struct RAGState {
     database: Database,
-    // turbovec
-    // sqlite
-    // embedding
 }
 
 #[derive(Debug)] 
@@ -33,10 +30,11 @@ struct Prompt {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // TODO .filter() threshold on ranking for vector search
+    // TODO data docs for testing
+    // TODO LLM handler
     // TODO embedding impl mod  -> @bonzupii ***Nomic:250m***, Arctic, Granite:30m embedding models
     // TODO ✅ turbovec handler
-    // TODO LLM handler
-    // TODO data docs for testing
     // TODO ✅ sqlite handler module
     // TODO ✅ Schema
     // TODO ✅ sqlite in state
@@ -72,19 +70,9 @@ async fn root(
     Json(body): Json<Value>,
 ) -> Json<Value> {
     let prompt: &str = body["prompt"].as_str().unwrap_or("");
-    //println!("posted data");
-    //println!("User prompt: {}", prompt);
     let docs = state.database.search(prompt, 2).await;
     let _ = dbg!(docs);
-    //dbg!(s);
-    /*
-    let _ = match state.database.search(prompt, 5).await {
-        Ok(rows) => rows,
-        Err(err) => dbg!(err),
-    };
-    */
 
-    // Response
     Json(json!({"text":"Hello!!!!"}))
 }
 async fn doc(
@@ -93,7 +81,7 @@ async fn doc(
 ) -> Json<Value> {
     let document: &str = body["document"].as_str().unwrap_or("");
     let _ = state.database.add_document(document).await;
-    //dbg!(s);
+
     Json(json!({"text":"Doc loaded successfully!"}))
 }
 
@@ -102,5 +90,6 @@ async fn force_json_content_type(mut req: Request<Body>, next: Next) -> Response
         header::CONTENT_TYPE,
         header::HeaderValue::from_static("application/json"),
     );
+
     next.run(req).await
 }
