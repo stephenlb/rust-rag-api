@@ -1,15 +1,3 @@
-// TODO test data
-// TODO add LLM for responding in natuarl language
-// TODO ratatui - UI FOR TERMINAL!!!! @foodude42
-// TODO Docker
-// TODO ✅ add Turbovec here
-// TODO ✅ Propmt Stemming - remove filler words from prompt
-// TODO ✅ CHUNKING!!!!!
-// TODO ✅ build our own hash function "string" -> "s" -> 121 >> 5441
-// TODO ✅ Hashing function - prevent duplication
-// TODO ✅ Deduplication  
-// TODO ✅ return Result<()> insert function
-// TODO Tokio RUSQLITE!!!!<__ 
 use crate::hash::*;
 use crate::clean::Cleaner;
 use rusqlite::{self, params, Connection, OptionalExtension};
@@ -19,7 +7,6 @@ use anyhow::Result;
 // Vector Strore and Embedding
 use turbovec::TurboQuantIndex;
 use fastembed::{TextEmbedding, TextInitOptions, EmbeddingModel};
-
 
 // Vector Score Thresholder
 const SCORE_THRESHOLD: f32 = 0.60;
