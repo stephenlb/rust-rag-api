@@ -1,7 +1,9 @@
-// TODO Docker
+// TODO test data
+// TODO add LLM for responding in natuarl language
 // TODO ratatui - UI FOR TERMINAL!!!! @foodude42
+// TODO Docker
 // TODO ✅ add Turbovec here
-// TODO Propmt Stemming - remove filler words from prompt
+// TODO ✅ Propmt Stemming - remove filler words from prompt
 // TODO ✅ CHUNKING!!!!!
 // TODO ✅ build our own hash function "string" -> "s" -> 121 >> 5441
 // TODO ✅ Hashing function - prevent duplication
@@ -174,6 +176,7 @@ impl Database {
 
         println!("Scores: {:?}", results.scores);
         println!("Indices: {:?}", results.indices);
+
         // loop over scores, and if score is above 0.60 then keep it
         let rowids: Vec<i64> = results.indices
             .iter()
