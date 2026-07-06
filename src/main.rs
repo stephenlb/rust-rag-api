@@ -60,6 +60,18 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+async fn ask(question: &str) -> Result<String> {
+    let client = reqwest::Client::new();
+    let response: String = client
+        .get(&format!("http://0.0.0.0:8000/{question}"))
+        .send()
+        .await?
+        .text()
+        .await?;
+
+    Ok(response)
+}
+
 // TODO instread of this, do it in the .sh file that uses our API
 async fn load_data(filename: &str) -> Result<Vec<String>> {
     let contents = fs::read_to_string(filename).await?;
@@ -77,10 +89,18 @@ async fn root(
     Json(body): Json<Value>,
 ) -> Json<Value> {
     let prompt: &str = body["prompt"].as_str().unwrap_or("");
-    let docs = state.database.search(prompt, 2).await;
-    let _ = dbg!(docs);
+    let _ = dbg!(prompt);
+    // TODO --- fix this
+    // TODO --- fix this
+    // TODO --- fix this
+    let docs = state.database.search(prompt, 2).await.unwrap_or("".to_string());
+    // TODO --- fix this
+    // TODO --- fix this
+    // TODO --- fix this
+    //let answer = ask(&format!("{docs}\n{prompt}")).await.unwrap_or("".to_string());
+    //let _ = dbg!(docs);
 
-    Json(json!({"text":"Hello!!!!"}))
+    Json(json!({"answer":docs}))
 }
 async fn doc(
     State(state): State<Arc<RAGState>>,

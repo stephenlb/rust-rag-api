@@ -7,6 +7,7 @@ edition = "2024"
 anyhow = "1.0.103"
 axum = "0.8.9"
 fastembed = "5.17.2"
+reqwest = "0.13.4"
 #tokio-rusqlite = "0.7.0"
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 rust-stemmers = "1.2.0"
