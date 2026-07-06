@@ -14,3 +14,6 @@ curl $HOST/doc -d '{"document":"'$DOCUMENT'"}'
 
 PROMPT="Rust"
 curl $HOST/ -d '{"prompt":"'$PROMPT'"}'
+
+PROMPT="Carbon"
+curl $HOST/ -d '{"prompt":"'$PROMPT'"}'

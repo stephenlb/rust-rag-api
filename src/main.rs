@@ -4,6 +4,7 @@ mod database;
 use database::{Database};
 
 use tokio;
+use tokio::fs;
 use anyhow::Result;
 use std::sync::Arc;
 use serde_json::{Value, json};
@@ -41,6 +42,11 @@ async fn main() -> Result<()> {
     // TODO ✅ add tests
     // TODO ✅ web server routes
     let db = Database::new();
+
+    let documents: Vec<String> = load_data("data/text.txt").await?;
+    for document in documents {
+        let _ = db.add_document(&document).await;
+    }
     let state = Arc::new(RAGState {
         database: db,
     });
@@ -62,6 +68,17 @@ async fn main() -> Result<()> {
     println!("Starting Server http://{host}");
     axum::serve(listener, app).await.unwrap();
     Ok(())
+}
+
+// TODO instread of this, do it in the .sh file that uses our API
+async fn load_data(filename: &str) -> Result<Vec<String>> {
+    let contents = fs::read_to_string(filename).await?;
+    let lines: Vec<String> = contents
+        .lines()
+        .map(|line| line.to_string())
+        .collect();
+
+    Ok(lines)
 }
 
 // Query interface for user prompts
