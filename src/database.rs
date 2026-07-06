@@ -27,7 +27,7 @@ const SCORE_THRESHOLD: f32 = 0.60;
 const NUMBER_OF_WORDS_PER_CHUNK: usize = 200;
 const DOCUMENT_DEDUPLICATION: &str = "
     CREATE TABLE IF NOT EXISTS document_deduplication (
-        hash INT
+        hash INT PRIMARY KEY
     );
 ";
 
@@ -36,8 +36,8 @@ const DOCUMENT: &str = "
     USING fts5 (text);
 ";
 const INSERT: &str = "
-    INSERT INTO documents (text)
-    VALUES (?1);
+    INSERT INTO documents (rowid, text)
+    VALUES (?1, ?2);
 ";
 const INSERT_DUPE: &str = "
     INSERT INTO document_deduplication (hash)
@@ -48,6 +48,7 @@ macro_rules! SELECT { () => {"
     FROM documents
     WHERE text MATCH ?1
     OR rowid in ({})
+    ORDER BY rank ASC
     LIMIT ?2;
 "}; }
 
@@ -58,7 +59,11 @@ pub struct Database {
     cleaner: Cleaner,
 }
 
-#[derive(Debug)] 
+// Full shape of an FTS5 result row. `rank` drives the SQL `ORDER BY`; `rowid`
+// and `rank` are carried for callers/debugging even though search() currently
+// only emits `text`.
+#[derive(Debug)]
+#[allow(dead_code)]
 pub struct Document {
     rowid: i64,
     text: String,
@@ -83,8 +88,8 @@ impl JoinVeci64 for Vec<i64> {
 impl Database {
     pub fn new() -> Self {
         let db = Connection::open_in_memory().expect("database connection");
-        let vector_store = TurboQuantIndex::new(384, 4).unwrap();
-        let embedding = TextEmbedding::try_new(Default::default()).unwrap();
+        let vector_store = TurboQuantIndex::new(384, 4).expect("vector store init");
+        let embedding = TextEmbedding::try_new(Default::default()).expect("embedding model init");
         let cleaner = Cleaner::new();
 
         let _ = db.execute(DOCUMENT, ());
@@ -94,7 +99,7 @@ impl Database {
             connection: db.into(),
             vector_store: vector_store.into(),
             embedding: embedding.into(),
-            cleaner: cleaner,
+            cleaner,
         }
     }
 
@@ -112,7 +117,6 @@ impl Database {
 
     fn chunk(&self, text: &str) -> Vec<String> {
         let mut chunks: Vec<String> = vec![];
-        let mut current_word: usize = 0;
         let words: Vec<String> = text
             .split_whitespace()
             .map(|w| w.to_string())
@@ -127,24 +131,27 @@ impl Database {
             ].join(" ");
             chunks.push(sentence);
         }
-        let sentence: String = words[number_of_chunks*NUMBER_OF_WORDS_PER_CHUNK..number_of_words].join(" ");
-        chunks.push(sentence);
+        let tail: &[String] = &words[number_of_chunks*NUMBER_OF_WORDS_PER_CHUNK..number_of_words];
+        if !tail.is_empty() {
+            chunks.push(tail.join(" "));
+        }
 
         chunks
     }
 
     pub async fn add_document(&self, document: &str) -> Result<usize> {
         let chunks: Vec<String> = self.chunk(document);
-        for chunck in chunks {
-            let cleaned: String = self.cleaner.clean(&chunck);
+        let mut inserted: usize = 0;
+        for chunk in chunks {
+            let cleaned: String = self.cleaner.clean(&chunk);
             self.insert(&cleaned).await?;
+            inserted += 1;
         }
-        Ok(0)
+        Ok(inserted)
     }
 
-    pub async fn insert(&self, text: &str) -> Result<usize> {
-        if self.check_duplicate(text).await.is_err() {
-            println!("DUPLICATE!!!!!!!!!");
+    pub async fn insert(&self, text: &str) -> Result<i64> {
+        if self.check_duplicate(text).await? {
             return Ok(0);
         }
 
@@ -152,56 +159,52 @@ impl Database {
         let mut embedding_guard = self.embedding.lock().await;
         let mut vector_guard = self.vector_store.lock().await;
         let guard = self.connection.lock().await;
-        let vectors = embedding_guard.embed(input, None).unwrap();
+        let vectors = embedding_guard.embed(input, None)?;
 
-        // Save to vector store
-        vector_guard.add(&vectors[0]);
-        
-        // Save to Database
-        let result = guard.execute(INSERT, (text,))?;
+        // The vector lands in slot `vector_store.len()` (0-based); pin the FTS5
+        // rowid to `slot + 1` so the two stays in lockstep by construction and
+        // search() can map a slot back with a plain `+ 1` — no side table.
+        let rowid: i64 = vector_guard.len() as i64 + 1;
+        guard.execute(INSERT, params![rowid, text])?;
         let text_hash: i64 = hash(text);
-        let result = guard.execute(INSERT_DUPE, params![text_hash])?;
+        guard.execute(INSERT_DUPE, params![text_hash])?;
 
-        Ok(result)
+        vector_guard.add(&vectors[0]);
+
+        Ok(rowid)
     }
 
     pub async fn search(&self, search: &str, limit: i32) -> Result<String> {
-        // Vector Sreach
+        // Vector search
         let cleaned: String = self.cleaner.clean(&search);
         let input: Vec<&str> = vec![&cleaned];
         let mut embedding_guard = self.embedding.lock().await;
         let vector_guard = self.vector_store.lock().await;
-        let vectors = embedding_guard.embed(input, None).unwrap();
+        let vectors = embedding_guard.embed(input, None)?;
         let results = vector_guard.search(&vectors[0], 10);
 
-        println!("Scores: {:?}", results.scores);
-        println!("Indices: {:?}", results.indices);
-
-        // loop over scores, and if score is above 0.60 then keep it
+        // Keep hits above the score threshold. A vector in slot N was inserted
+        // with FTS5 rowid N + 1 (see insert()), so the mapping is a plain `+ 1`.
         let rowids: Vec<i64> = results.indices
             .iter()
-            .enumerate()
-            .filter(|(index, id)| results.scores[*index] > SCORE_THRESHOLD)
-            .map(|(index, id)| *id)
+            .zip(results.scores.iter())
+            .filter(|(_, score)| **score > SCORE_THRESHOLD)
+            .map(|(slot, _)| slot + 1)
             .collect();
 
         let select = format!(SELECT!(), rowids.join(","));
         let guard = self.connection.lock().await;
-        let mut statment = guard.prepare(&select)?;
-        let documents = statment.query_map(params![cleaned, limit], |row| {
+        let mut statement = guard.prepare(&select)?;
+        let documents = statement.query_map(params![cleaned, limit], |row| {
             let rowid: i64 = row.get(0)?;
             let text: String = row.get(1)?;
             let rank: f64 = row.get(2)?;
-            let _ = dbg!(rank);
             Ok(Document { rowid, text, rank })
         })?;
 
         let mut docs: Vec<String> = vec![];
         for doc in documents {
-            // TODO fetch doc
-            let doc = doc?;
-            dbg!(doc.rowid);
-            docs.push(doc.text);
+            docs.push(doc?.text);
         }
 
         Ok(docs.join("\n"))
