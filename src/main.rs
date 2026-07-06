@@ -31,16 +31,6 @@ struct Prompt {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // TODO .filter() threshold on ranking for vector search
-    // TODO data docs for testing
-    // TODO LLM handler
-    // TODO embedding impl mod  -> @bonzupii ***Nomic:250m***, Arctic, Granite:30m embedding models
-    // TODO ✅ turbovec handler
-    // TODO ✅ sqlite handler module
-    // TODO ✅ Schema
-    // TODO ✅ sqlite in state
-    // TODO ✅ add tests
-    // TODO ✅ web server routes
     let db = Database::new();
 
     let documents: Vec<String> = load_data("data/text.txt").await?;

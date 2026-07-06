@@ -59,9 +59,6 @@ pub struct Database {
     cleaner: Cleaner,
 }
 
-// Full shape of an FTS5 result row. `rank` drives the SQL `ORDER BY`; `rowid`
-// and `rank` are carried for callers/debugging even though search() currently
-// only emits `text`.
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct Document {
@@ -160,10 +157,6 @@ impl Database {
         let mut vector_guard = self.vector_store.lock().await;
         let guard = self.connection.lock().await;
         let vectors = embedding_guard.embed(input, None)?;
-
-        // The vector lands in slot `vector_store.len()` (0-based); pin the FTS5
-        // rowid to `slot + 1` so the two stays in lockstep by construction and
-        // search() can map a slot back with a plain `+ 1` — no side table.
         let rowid: i64 = vector_guard.len() as i64 + 1;
         guard.execute(INSERT, params![rowid, text])?;
         let text_hash: i64 = hash(text);
@@ -175,7 +168,6 @@ impl Database {
     }
 
     pub async fn search(&self, search: &str, limit: i32) -> Result<String> {
-        // Vector search
         let cleaned: String = self.cleaner.clean(&search);
         let input: Vec<&str> = vec![&cleaned];
         let mut embedding_guard = self.embedding.lock().await;
@@ -183,8 +175,6 @@ impl Database {
         let vectors = embedding_guard.embed(input, None)?;
         let results = vector_guard.search(&vectors[0], 10);
 
-        // Keep hits above the score threshold. A vector in slot N was inserted
-        // with FTS5 rowid N + 1 (see insert()), so the mapping is a plain `+ 1`.
         let rowids: Vec<i64> = results.indices
             .iter()
             .zip(results.scores.iter())
