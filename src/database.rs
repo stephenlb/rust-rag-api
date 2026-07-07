@@ -8,9 +8,7 @@ use anyhow::Result;
 use turbovec::TurboQuantIndex;
 use fastembed::{TextEmbedding, TextInitOptions, EmbeddingModel};
 
-// Vector Score Thresholder
-const SCORE_THRESHOLD: f32 = 0.60;
-
+const CANDIDATE_POOL: usize = 20;
 const NUMBER_OF_WORDS_PER_CHUNK: usize = 200;
 const DOCUMENT_DEDUPLICATION: &str = "
     CREATE TABLE IF NOT EXISTS document_deduplication (
@@ -22,21 +20,31 @@ const DOCUMENT: &str = "
     CREATE VIRTUAL TABLE IF NOT EXISTS documents
     USING fts5 (text);
 ";
+
 const INSERT: &str = "
     INSERT INTO documents (rowid, text)
     VALUES (?1, ?2);
 ";
+
 const INSERT_DUPE: &str = "
     INSERT INTO document_deduplication (hash)
     VALUES (?1);
 ";
-macro_rules! SELECT { () => {"
+
+// Lexical (BM25) candidates: keyword matches ranked by relevance.
+macro_rules! SELECT_LEXICAL { () => {"
     SELECT rowid, text, BM25(documents) AS rank
     FROM documents
     WHERE text MATCH ?1
-    OR rowid in ({})
     ORDER BY rank ASC
     LIMIT ?2;
+"}; }
+
+// Fetch the text for an explicit set of rowids (the semantic candidates).
+macro_rules! SELECT_BY_ROWID { () => {"
+    SELECT rowid, text
+    FROM documents
+    WHERE rowid IN ({});
 "}; }
 
 pub struct Database {
@@ -44,14 +52,6 @@ pub struct Database {
     vector_store: Mutex<TurboQuantIndex>,
     embedding: Mutex<TextEmbedding>,
     cleaner: Cleaner,
-}
-
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct Document {
-    rowid: i64,
-    text: String,
-    rank: f64,
 }
 
 trait JoinVeci64 {
@@ -154,35 +154,91 @@ impl Database {
         Ok(rowid)
     }
 
-    pub async fn search(&self, search: &str, limit: i32) -> Result<String> {
-        let cleaned: String = self.cleaner.clean(&search);
-        let input: Vec<&str> = vec![&cleaned];
+    fn match_query(cleaned: &str) -> String {
+        cleaned
+            .split_whitespace()
+            .map(|token| format!("\"{}\"", token.replace('"', "\"\"")))
+            .collect::<Vec<String>>()
+            .join(" OR ")
+    }
+
+    async fn semantic_candidates(&self, cleaned: &str) -> Result<Vec<i64>> {
+        let input: Vec<&str> = vec![cleaned];
         let mut embedding_guard = self.embedding.lock().await;
         let vector_guard = self.vector_store.lock().await;
         let vectors = embedding_guard.embed(input, None)?;
-        let results = vector_guard.search(&vectors[0], 10);
+        let results = vector_guard.search(&vectors[0], CANDIDATE_POOL);
 
-        let rowids: Vec<i64> = results.indices
-            .iter()
-            .zip(results.scores.iter())
-            .filter(|(_, score)| **score > SCORE_THRESHOLD)
-            .map(|(slot, _)| slot + 1)
-            .collect();
+        let rowids: Vec<i64> = results.indices.iter().map(|slot| slot + 1).collect();
+        Ok(rowids)
+    }
 
-        let select = format!(SELECT!(), rowids.join(","));
+    async fn lexical_candidates(&self, cleaned: &str) -> Result<Vec<i64>> {
+        let match_query: String = Self::match_query(cleaned);
+        if match_query.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let guard = self.connection.lock().await;
+        let mut statement = guard.prepare(SELECT_LEXICAL!())?;
+        let rows = statement.query_map(
+            params![match_query, CANDIDATE_POOL as i64],
+            |row| row.get::<_, i64>(0),
+        )?;
+
+        let mut rowids: Vec<i64> = vec![];
+        for row in rows {
+            rowids.push(row?);
+        }
+        Ok(rowids)
+    }
+
+    fn fuse(ranked_lists: &[Vec<i64>]) -> Vec<i64> {
+        let mut scores: std::collections::HashMap<i64, f32> = std::collections::HashMap::new();
+        for list in ranked_lists {
+            for (rank, rowid) in list.iter().enumerate() {
+                *scores.entry(*rowid).or_insert(0.0) += 1.0 / (60.0 + rank as f32);
+            }
+        }
+
+        let mut fused: Vec<(i64, f32)> = scores.into_iter().collect();
+        fused.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.0.cmp(&b.0))
+        });
+        fused.into_iter().map(|(rowid, _)| rowid).collect()
+    }
+
+    pub async fn search(&self, search: &str, limit: i32) -> Result<String> {
+        let cleaned: String = self.cleaner.clean(&search);
+        let semantic: Vec<i64> = self.semantic_candidates(&cleaned).await?;
+        let lexical: Vec<i64> = self.lexical_candidates(&cleaned).await?;
+        let fused: Vec<i64> = Self::fuse(&[semantic, lexical]);
+
+        let top: Vec<i64> = fused.into_iter().take(limit.max(0) as usize).collect();
+        if top.is_empty() {
+            return Ok(String::new());
+        }
+
+        let select = format!(SELECT_BY_ROWID!(), top.join(","));
         let guard = self.connection.lock().await;
         let mut statement = guard.prepare(&select)?;
-        let documents = statement.query_map(params![cleaned, limit], |row| {
-            let rowid: i64 = row.get(0)?;
-            let text: String = row.get(1)?;
-            let rank: f64 = row.get(2)?;
-            Ok(Document { rowid, text, rank })
+        let rows = statement.query_map(params![], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
         })?;
 
-        let mut docs: Vec<String> = vec![];
-        for doc in documents {
-            docs.push(doc?.text);
+        let mut text_by_rowid: std::collections::HashMap<i64, String> =
+            std::collections::HashMap::new();
+        for row in rows {
+            let (rowid, text) = row?;
+            text_by_rowid.insert(rowid, text);
         }
+
+        let docs: Vec<String> = top
+            .iter()
+            .filter_map(|rowid| text_by_rowid.remove(rowid))
+            .collect();
 
         Ok(docs.join("\n"))
     }

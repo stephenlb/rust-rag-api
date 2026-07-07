@@ -89,18 +89,13 @@ async fn root(
     Json(body): Json<Value>,
 ) -> Json<Value> {
     let prompt: &str = body["prompt"].as_str().unwrap_or("");
-    let _ = dbg!(prompt);
-    // TODO --- fix this
-    // TODO --- fix this
-    // TODO --- fix this
     let docs = state.database.search(prompt, 2).await.unwrap_or("".to_string());
-    // TODO --- fix this
-    // TODO --- fix this
-    // TODO --- fix this
-    //let answer = ask(&format!("{docs}\n{prompt}")).await.unwrap_or("".to_string());
-    //let _ = dbg!(docs);
+    let answer = ask(&format!("{docs}\n{prompt}")).await.unwrap_or("".to_string());
 
-    Json(json!({"answer":docs}))
+    println!("{prompt}");
+    println!("{answer}");
+
+    Json(json!({"answer":answer}))
 }
 async fn doc(
     State(state): State<Arc<RAGState>>,
