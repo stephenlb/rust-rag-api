@@ -23,6 +23,7 @@ impl Cleaner {
     }
 
     pub fn clean(&self, text: &str) -> String {
+        return text.to_string();
         let words: Vec<String> = text
             .split_whitespace()
             .map(|word| word.to_lowercase())

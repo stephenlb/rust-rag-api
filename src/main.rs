@@ -3,6 +3,7 @@ mod hash;
 mod database;
 use database::{Database};
 
+use reqwest;
 use tokio;
 use tokio::fs;
 use anyhow::Result;
@@ -46,7 +47,6 @@ async fn main() -> Result<()> {
         .route("/", post(root))
 
         // Upload documents
-        // TODO chunck the data
         .route("/doc", post(doc))
 
         //.layer(Extension(state))

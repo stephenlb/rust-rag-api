@@ -4,5 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0.103"
 crossterm = "0.29.0"
 ratatui = { version = "0.30.2", features = ["serde"] }
+ratatui-macros = "0.7.2"
+serde = "1.0.228"
+ureq = { version = "3.3.0", features = ["json"] }

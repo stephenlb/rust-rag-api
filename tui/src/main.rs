@@ -1,14 +1,21 @@
 use std::io;
+use anyhow::Result;
 
-//use crossterm::style::Stylize;
+use ureq;
+use std::time::Duration;
+
+use serde::{Serialize, Deserialize};
+
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+//use ratatui_macros::span;
+use ratatui_macros::line;
 use ratatui::{
     buffer::Buffer,
-    layout::{Rect, Constraint},
-    style::Stylize,
+    layout::{Rect, Constraint, Alignment},
+    style::{Color, Style, Stylize},
     symbols::border,
-    text::{Line, Text},
-    widgets::{Block, Paragraph, Widget},
+    text::{Span, Line, Text},
+    widgets::{Block, Borders, Paragraph, Wrap, Widget},
     DefaultTerminal, Frame,
 };
 
@@ -21,11 +28,34 @@ struct App {
 
 fn main() -> io::Result<()> {
     let mut app = App::default();
-    app.prompt = "type text here".to_string();
+    app.prompt = "".to_string();
     app.history.push("Hello, what do you want?".to_string());
     app.history.push("Hello Laura Maxwell".to_string());
     app.history.push("Hello Quickfix".to_string());
-    ratatui::run(|terminal| app.run(terminal))
+    ratatui::run(|terminal| app.run(terminal));
+
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct MySendBody {
+   prompt: String,
+}
+
+#[derive(Deserialize)]
+struct MyRecvBody {
+   answer: String,
+}
+
+fn ask(question: &str) -> Result<String> {
+    let send_body = MySendBody { prompt: question.to_string() };
+    let recv_body = ureq::post("http://0.0.0.0:3000/")
+	.header("Accept", "application/json")
+	.send_json(&send_body)?
+	.body_mut()
+	.read_json::<MyRecvBody>()?;
+
+    Ok(recv_body.answer)
 }
 
 impl App {
@@ -41,6 +71,12 @@ impl App {
         frame.render_widget(self, frame.area());
     }
 
+    // TODO ✅ wrap text
+    // TODO Add Cursor
+    // TODO load indicator
+    // TODO gemma4 - slow..wwwww CPU -> GPU
+    // TODO 
+    // TODO 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Esc => self.exit(),
@@ -51,7 +87,13 @@ impl App {
             },
             KeyCode::Enter => {
                 self.history.push(self.prompt.to_string());
+                self.history.push("Loading question".to_string());
                 self.prompt.clear();
+
+                // TODO - TUI look frozen
+                let answer = ask(&self.prompt).unwrap_or("".to_string());
+                self.history.push(self.prompt.to_string());
+                self.history.push(answer.to_string());
             },
             KeyCode::Char(c) => {
                 self.prompt.push(c);
@@ -91,7 +133,7 @@ impl Widget for &App {
 
         let height: i32 = area.height as i32;
         let length: i32 = self.history.len() as i32;
-        let offset: i32 = 4;
+        let offset: i32 = 5;
         let start: usize = *vec![
             0, length - height + offset,
         ].iter().max().unwrap() as usize;
@@ -104,12 +146,16 @@ impl Widget for &App {
         let chat_history = Text::from(messages).on_magenta().dim().bold();
         Paragraph::new(chat_history)
             .block(block)
+            .wrap(Wrap { trim: true })
             .render(area, buf);
 
-        let prompt = Text::from(vec![Line::from(self.prompt.to_string())]);
+        let text = self.prompt.to_string();
+        let prompt = Text::from(vec![line![
+            text, " ".on_cyan()
+        ]]);
         let prompt_area = Rect {
             x: area.x,
-            y: area.height - 3,
+            y: area.height - 4,
             width: area.width,
             height: area.height,
         };
@@ -120,6 +166,7 @@ impl Widget for &App {
 
         Paragraph::new(prompt)
             .block(prompt_block)
+            .wrap(Wrap { trim: true })
             .render(prompt_area, buf);
     }
 }
